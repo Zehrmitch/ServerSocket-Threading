@@ -1,2 +1,1 @@
-# se3313a-project
-SE 3313a final project
+SE3313 Project 2020

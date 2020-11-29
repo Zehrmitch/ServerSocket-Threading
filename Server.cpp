@@ -7,44 +7,94 @@
 #include <algorithm>
 
 using namespace Sync;
+using namespace std;
+
+class SocketThread : public Thread {
+    private:
+        Socket& socket;
+        ByteArray data;
+    public:
+        SocketThread(Socket& socket): socket(socket) {}
+        ~SocketThread(){}
+
+        Socket& GetSocket()
+        {
+            return socket;
+        }
+
+        virtual long ThreadMain()
+        {
+            while(true) {
+                try {
+                    // Get socket data
+                    socket.Read(data);
+                    if (data.ToString() != "done" && data.ToString() != "Done") {
+                        // Change the data before its returned 
+                        string newData = "X_" + data.ToString() + "_X";
+                        data = ByteArray(newData);
+
+                        // Write the changed string
+                        socket.Write(data);
+                    }
+                    else {
+                        cout << "User closed connection" << endl ;
+                        break;
+                    }
+                }
+                catch (...) {
+                    cout << "Error Catch" << endl;
+                }
+            }
+            return 0;
+        }
+};
 
 // This thread handles the server operations
-class ServerThread : public Thread
-{
-private:
-    SocketServer& server;
-public:
-    ServerThread(SocketServer& server)
-    : server(server)
-    {}
+class ServerThread : public Thread {
+    private:
+        SocketServer& server;
+        bool finished = false;
+    public:
+        // New vector to store threads
+        vector<SocketThread*> socketConnections;
+        ServerThread(SocketServer& server) : server(server) {}
 
-    ~ServerThread()
-    {
-        // Cleanup
-	//...
-    }
+        ~ServerThread()
+        {
+            // Cleanup
+            finished = true;
+            cout << "Closing all connections" << endl;
 
-    virtual long ThreadMain()
-    {
-        // Wait for a client socket connection
-        Socket* newConnection = new Socket(server.Accept());
+            // Loop through vector of connections and close them
+            for (auto connection : socketConnections){
+                try{
+                    connection -> GetSocket().Close();
+                    cout << "Connection closed" << endl; 
+                }
+                catch(...){
+                    cout << "Error closing";
+                }
+            }
+        cout << "All connections closed" << endl ; 
+        }
 
-        // A reference to this pointer 
-        Socket& socketReference = *newConnection;
-	//You can use this to read data from socket and write data to socket. You may want to put this read/write somewhere else. You may use ByteArray
-	// Wait for data
-        //socketReference.Read(data);
-        // Send it back
-        //socketReference.Write(data);
-	return 1;
-    }
+        virtual long ThreadMain()
+        {
+            while(!finished) {
+                Socket* newConnection = new Socket(server.Accept());
+                // A reference to this pointer 
+                Socket& socketReference = *newConnection;
+                socketConnections.push_back(new SocketThread(socketReference));
+            }
+        return 1;
+        }
 };
 
 
 int main(void)
 {
     std::cout << "I am a server." << std::endl;
-	
+	std::cout << "Press Enter to quit" << std::endl;
     // Create our server
     SocketServer server(3000);    
 
@@ -54,8 +104,13 @@ int main(void)
     // This will wait for input to shutdown the server
     FlexWait cinWaiter(1, stdin);
     cinWaiter.Wait();
+    std::cin.get();
+
 
     // Shut down and clean up the server
+    cout << "The server is now shutting down" << endl;
     server.Shutdown();
+    cout << "The server is shut down" << endl;
 
+    return 0;
 }
